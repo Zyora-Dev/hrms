@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # backend/, the root of the checkout as far as the app is concerned.
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -11,7 +13,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     DATABASE_URL: str
-    CORS_ORIGINS: list[str] = ["http://localhost:5190", "http://127.0.0.1:5190"]
+    # NoDecode keeps pydantic-settings from insisting this is JSON. A hosting
+    # dashboard is a single-line text box, and typing one bare URL into it is
+    # the obvious thing to do — so accept that, a comma-separated list, or
+    # JSON, rather than failing at startup over punctuation.
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = [
+        "http://localhost:5190",
+        "http://127.0.0.1:5190",
+    ]
     JWT_SECRET: str
     # Encrypts the few fields that must be readable but never stored in the
     # clear. Generated from JWT_SECRET when unset, so nothing breaks on an
@@ -35,6 +44,19 @@ class Settings(BaseSettings):
     # mounted disk, because a container's own filesystem is thrown away on
     # every deploy and would take the employee photos with it.
     DATA_DIR: Path | None = None
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _origins(cls, value):
+        if not isinstance(value, str):
+            return value
+
+        text = value.strip()
+        if text.startswith("["):
+            return [str(o).strip().rstrip("/") for o in json.loads(text)]
+        # A trailing slash makes the origin stop matching the browser's, and
+        # the failure looks like a CORS bug rather than a typo.
+        return [o.strip().rstrip("/") for o in text.split(",") if o.strip()]
 
     @field_validator("DATABASE_URL")
     @classmethod
