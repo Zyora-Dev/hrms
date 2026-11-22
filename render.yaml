@@ -25,6 +25,7 @@ databases:
     user: hrms
     plan: basic-256mb
     postgresMajorVersion: "17"
+    region: singapore
 
 services:
   # ---------------------------------------------------------------------
@@ -33,6 +34,7 @@ services:
   - type: web
     name: hrms-api
     runtime: python
+    region: singapore   # closest Render region to India
     plan: starter        # free instances sleep, and a sleeping scheduler
                          # silently stops sending payroll and leave mail.
     rootDir: backend
@@ -78,6 +80,7 @@ services:
   - type: web
     name: hrms-web
     runtime: node
+    region: singapore
     plan: starter
     rootDir: frontend
     buildCommand: npm ci && npm run build
