@@ -10,6 +10,7 @@ reading it tells you the schema's history, that is the signal to adopt one.
 """
 
 import importlib
+import sys
 
 from app import audit
 
@@ -26,6 +27,28 @@ MIGRATIONS = [
     "migrate_security",
 ]
 
+# Defaults every install needs. Order is free; none depends on another.
+SEEDS = [
+    "seed_payroll",
+    "seed_tax",
+    "seed_letters",
+]
+
+
+def run_quietly(fn) -> None:
+    """Call a seed with no argv of our own.
+
+    The seeds read `--reset` straight out of sys.argv, and --reset drops
+    rows an admin may have edited. A flag meant for this script would
+    otherwise be picked up by all of them.
+    """
+    argv = sys.argv
+    sys.argv = argv[:1]
+    try:
+        fn()
+    finally:
+        sys.argv = argv
+
 
 def main() -> None:
     # Schema work is not a decision anyone made; keep it out of the trail.
@@ -40,7 +63,16 @@ def main() -> None:
         print(f"== {name}")
         importlib.import_module(f"scripts.{name}").main()
 
+    # Reference data the app cannot function without: leave types, salary
+    # components, tax slabs, letter templates. Each seed skips rows that
+    # already exist, so edits made in Settings survive every later deploy.
+    for name in SEEDS:
+        print(f"== {name}")
+        run_quietly(importlib.import_module(f"scripts.{name}").main)
+
     print("\nDatabase is up to date.")
+    print("No admin is created here — run `python -m scripts.create_admin "
+          "<email> <password>` once, from a shell.")
 
 
 if __name__ == "__main__":
