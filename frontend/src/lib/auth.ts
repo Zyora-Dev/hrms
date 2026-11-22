@@ -1,5 +1,9 @@
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:9300";
+// Every call appends a path beginning with "/", so a trailing slash here
+// produces "//auth/login" — which the API answers with a 404 that looks
+// like a missing route rather than a mistyped variable.
+export const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:9300"
+).replace(/\/+$/, "");
 
 const TOKEN_KEY = "hrms_admin_token";
 
