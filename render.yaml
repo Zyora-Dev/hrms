@@ -35,6 +35,8 @@ services:
     name: hrms-api
     runtime: python
     region: singapore   # closest Render region to India
+    branch: main
+    autoDeploy: true
     plan: starter        # free instances sleep, and a sleeping scheduler
                          # silently stops sending payroll and leave mail.
     rootDir: backend
@@ -81,6 +83,8 @@ services:
     name: hrms-web
     runtime: node
     region: singapore
+    branch: main
+    autoDeploy: true
     plan: starter
     rootDir: frontend
     buildCommand: npm ci && npm run build
