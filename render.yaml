@@ -1,0 +1,89 @@
+# Render blueprint. Create once with "New > Blueprint" pointed at this repo;
+# after that every push to the tracked branch redeploys.
+#
+# Three things need a value by hand before the first deploy succeeds — they
+# are marked `sync: false` below and Render will prompt for each:
+#
+#   DATA_ENCRYPTION_KEY   copy the existing one out of backend/.env. Do NOT
+#                         let Render generate a fresh key: every Aadhaar
+#                         already in the database is encrypted with the old
+#                         one and would decrypt to nothing.
+#   ZOHO_CPAAS_KEY        the Zoho key, including its "Zoho-enczapikey " prefix.
+#   CORS_ORIGINS          the frontend's URL, as a JSON list, once Render has
+#                         assigned it — e.g. ["https://hrms-web.onrender.com"]
+#   NEXT_PUBLIC_API_URL   the API's URL, e.g. https://hrms-api.onrender.com
+#
+# The API deliberately runs as a single instance with a single worker. The
+# scheduler, the SSE event bus and the rate limiter all hold their state in
+# process; a second copy would duplicate every scheduled job, hand out a
+# second rate-limit allowance, and deliver live updates to only half the
+# users connected. Moving that state to Redis is what would lift this.
+
+databases:
+  - name: hrms-db
+    databaseName: hrms
+    user: hrms
+    plan: basic-256mb
+    postgresMajorVersion: "17"
+
+services:
+  # ---------------------------------------------------------------------
+  # API — FastAPI. Python version comes from backend/.python-version.
+  # ---------------------------------------------------------------------
+  - type: web
+    name: hrms-api
+    runtime: python
+    plan: starter        # free instances sleep, and a sleeping scheduler
+                         # silently stops sending payroll and leave mail.
+    rootDir: backend
+    numInstances: 1
+    healthCheckPath: /health
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python -m scripts.deploy_migrate
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    disk:
+      # Employee photos, claim receipts, documents and database dumps. The
+      # container filesystem is wiped on every deploy; this is not.
+      name: hrms-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hrms-db
+          property: connectionString
+      - key: DATA_DIR
+        value: /var/data
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ZOHO_CPAAS_URL
+        value: https://cpaas.zoho.in/v1.1/email
+      - key: ZOHO_CPAAS_KEY
+        sync: false
+      - key: MAIL_FROM_ADDRESS
+        value: hrms@spectratechnologies.solutions
+      - key: MAIL_FROM_NAME
+        value: HRMS
+
+  # ---------------------------------------------------------------------
+  # Frontend — Next.js. NEXT_PUBLIC_* is baked in at build time, so a
+  # change to the API URL needs a rebuild, not just a restart.
+  # ---------------------------------------------------------------------
+  - type: web
+    name: hrms-web
+    runtime: node
+    plan: starter
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
